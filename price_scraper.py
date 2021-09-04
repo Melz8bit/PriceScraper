@@ -4,17 +4,18 @@ from time import strftime
 from apscheduler.schedulers.background import BackgroundScheduler
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import getpass
 import requests
 import smtplib, ssl
 import os
 import time
 
 FILE_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
+email_password = ''
 
 def send_email(game_title, game_price_data):
     port = 465 # SSL port
     email_from = 'melz.devacct@gmail.com'
-    password = 'EZ2^Q@Q$&RGjATPA%5gp'
     email_to = 'melz8bit@gmail.com'
 
     message = MIMEMultipart("alternative")
@@ -27,7 +28,7 @@ def send_email(game_title, game_price_data):
 
     context = ssl.create_default_context()
     with smtplib.SMTP_SSL('smtp.gmail.com', port, context=context) as server:
-        server.login(email_from, password)
+        server.login(email_from, email_password)
         server.sendmail(email_from, email_to, message.as_string())
     
     print('Email sent\n')
@@ -117,6 +118,7 @@ def main():
 
 if __name__ == '__main__':
     print('Running...\n')
+    email_password = getpass.getpass(prompt='Enter email password:', stream=None)
     print('Press Ctrl+{0} to exit\n'
           .format('Break' if os.name == 'nt' else 'C'))
 
