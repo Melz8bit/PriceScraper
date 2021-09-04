@@ -1,9 +1,11 @@
 from bs4 import BeautifulSoup
 from email.mime.text import MIMEText
-from datetime import date
+from datetime import date, datetime, timedelta
+from apscheduler.schedulers.background import BackgroundScheduler
 import requests
 import smtplib
 import os
+import time
 
 FILE_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 
@@ -24,7 +26,8 @@ FILE_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 
 
 def save_prices_to_file(game_title, price_list, lowest_prices_list):
-    with open(os.path.join(FILE_DIRECTORY, 'prices.txt'), 'w') as f:
+
+    with open(os.path.join(FILE_DIRECTORY, f'{game_title}.txt'), 'w') as f:
         f.write(f'{game_title}\n\n')
 
         f.write('All Time Lowest Prices\n')
@@ -36,56 +39,70 @@ def save_prices_to_file(game_title, price_list, lowest_prices_list):
         f.write('--------------\n')
         for store, price in price_list.items():
             f.write(f'{store}:\n\t\t\t{price}\n')
+        f.write('\n')
 
 
 def get_prices():
-    price_list = {}
-    lowest_prices_list = {}
+    urls = [
+        'https://www.dekudeals.com/items/tales-of-vesperia-definitive-edition',
+        'https://www.dekudeals.com/items/spiritfarer',
+    ]
 
-    url = 'https://www.dekudeals.com/items/tales-of-vesperia-definitive-edition'
+    for url in urls:
+        price_list = {}
+        lowest_prices_list = {}
 
-    result = requests.get(url)
-    doc = BeautifulSoup(result.text, 'html.parser')
+        result = requests.get(url)
+        doc = BeautifulSoup(result.text, 'html.parser')
 
-    game_title = doc.find('title').text
+        game_title = doc.find('title').text
 
-    prices = doc.find_all(text='Current prices')[
-        0].find_all_next('img', alt=True)
-    for img in prices:
-        if img['alt'] != 'Screenshot' and img['alt'] != '' and img['alt'] is not None:
+        all_time_low = doc.find_all('strong', text='All time low')[0].find_all_next('td', colspan=True)
+        for td in all_time_low:
+            game_version = td.text.strip()
 
-            game_version = img.find_next('td', class_='version').text
+            if game_version == 'Digital':
+                lowest_prices_list[f'{game_version}'] = f'{td.find_next("td", class_=True).text.strip()}'
+            else:
+                lowest_prices_list[f'{game_version}'] = f'{td.find_next("td", class_=True).find_next("td", class_=True).text.strip()}'
 
-            # Physical version
-            for price in img.find_all_next('div', class_='btn btn-block btn-outline-secondary'):
-                price_list[f'{img["alt"].strip()} ({game_version.strip()})'] = f'{price.text.split("-", 1)[0].strip()}'
+        prices = doc.find_all(text='Current prices')[
+            0].find_all_next('img', alt=True)
+        for img in prices:
+            if img['alt'] != 'Screenshot' and img['alt'] != '' and img['alt'] is not None:
 
-            # Digital version
-            for price in img.find_all_next('div', class_='btn btn-block btn-primary'):
-                price_list[f'{img["alt"].strip()} ({game_version.strip()})'] = f'{price.text.split("-", 1)[0].strip()}'
+                game_version = img.find_next('td', class_='version').text
 
-    all_time_low = doc.find_all('strong', text='All time low')[
-        0].find_all_next('td', colspan=True)
-    for td in all_time_low:
-        game_version = td.text.strip()
+                # Physical version
+                for price in img.find_all_next('div', class_='btn btn-block btn-outline-secondary'):
+                    price_list[f'{img["alt"].strip()} ({game_version.strip()})'] = f'{price.text.split("-", 1)[0].strip()}'
 
-        if game_version == 'Digital':
-            lowest_prices_list[f'{game_version}'] = f'{td.find_next("td", class_=True).text.strip()}'
-        else:
-            lowest_prices_list[f'{game_version}'] = f'{td.find_next("td", class_=True).find_next("td", class_=True).text.strip()}'
+                # Digital version
+                for price in img.find_all_next('div', class_='btn btn-block btn-primary'):
+                    price_list[f'{img["alt"].strip()} ({game_version.strip()})'] = f'{price.text.split("-", 1)[0].strip()}'
+        
+        save_prices_to_file(game_title, price_list, lowest_prices_list)
 
-    return(game_title, price_list, lowest_prices_list)
-
+    #return(game_title, price_list, lowest_prices_list)
 
 def main():
+    print('Running...')
 
-    game_title = ''
-    price_list = {}
-    lowest_prices_list = {}
+    get_prices()
 
-    game_title, price_list, lowest_prices_list = get_prices()
-    save_prices_to_file(game_title, price_list, lowest_prices_list)
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(get_prices, 'interval', hours=12)
+    scheduler.start()
+    print('Press Ctrl+{0} to exit'.format('Break' if os.name == 'nt' else 'C'))
 
+    try:
+        # This is here to simulate application activity (which keeps the main thread alive).
+        while True:
+            time.sleep(5)
+    except (KeyboardInterrupt, SystemExit):
+        # Not strictly necessary if daemonic mode is enabled but should be done if possible
+        scheduler.shutdown()
+    
     # send_email()
 
 
