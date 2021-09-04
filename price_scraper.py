@@ -26,8 +26,8 @@ FILE_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 
 
 def save_prices_to_file(game_title, price_list, lowest_prices_list):
-
-    with open(os.path.join(FILE_DIRECTORY, f'{game_title}.txt'), 'w') as f:
+    game_title = game_title.replace(':', ' -')
+    with open(os.path.join(FILE_DIRECTORY, f'{game_title[:-13]}.txt'), 'w') as f:
         f.write(f'{game_title}\n\n')
 
         f.write('All Time Lowest Prices\n')
@@ -57,7 +57,8 @@ def get_prices():
 
         game_title = doc.find('title').text
 
-        all_time_low = doc.find_all('strong', text='All time low')[0].find_all_next('td', colspan=True)
+        all_time_low = doc.find_all('strong', text='All time low')[
+            0].find_all_next('td', colspan=True)
         for td in all_time_low:
             game_version = td.text.strip()
 
@@ -80,10 +81,11 @@ def get_prices():
                 # Digital version
                 for price in img.find_all_next('div', class_='btn btn-block btn-primary'):
                     price_list[f'{img["alt"].strip()} ({game_version.strip()})'] = f'{price.text.split("-", 1)[0].strip()}'
-        
+
         save_prices_to_file(game_title, price_list, lowest_prices_list)
 
-    #return(game_title, price_list, lowest_prices_list)
+    # return(game_title, price_list, lowest_prices_list)
+
 
 def main():
     print('Running...')
@@ -102,7 +104,7 @@ def main():
     except (KeyboardInterrupt, SystemExit):
         # Not strictly necessary if daemonic mode is enabled but should be done if possible
         scheduler.shutdown()
-    
+
     # send_email()
 
 
