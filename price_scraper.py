@@ -1,51 +1,61 @@
 from bs4 import BeautifulSoup
-from email.mime.text import MIMEText
 from datetime import date, datetime, timedelta
+from time import strftime
 from apscheduler.schedulers.background import BackgroundScheduler
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import requests
-import smtplib
+import smtplib, ssl
 import os
 import time
 
 FILE_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 
-""" def send_email():
-    email_from = 'melz8bit@gmail.com'
+def send_email(game_title, game_price_data):
+    port = 465 # SSL port
+    email_from = 'melz.devacct@gmail.com'
+    password = 'EZ2^Q@Q$&RGjATPA%5gp'
     email_to = 'melz8bit@gmail.com'
 
-    with open(os.path.join(FILE_DIRECTORY, 'prices.txt'), 'r') as f:
-        msg = MIMEText(f.read())
+    message = MIMEMultipart("alternative")
+    message['Subject'] = game_title
+    message['From'] = email_from
+    message['To'] = email_to
 
-    msg['Subject'] = f'{game_title} - Prices as of {date.today}'
-    msg['From'] = f'{email_from}'
-    msg['To'] = f'{email_to}'
+    plaintext = MIMEText(game_price_data, 'plain')
+    message.attach(plaintext)
 
-    s = smtplib.SMTP('localhost')
-    s.sendmail(email_from, email_to, msg.as_string())
-    s.quit() """
+    context = ssl.create_default_context()
+    with smtplib.SMTP_SSL('smtp.gmail.com', port, context=context) as server:
+        server.login(email_from, password)
+        server.sendmail(email_from, email_to, message.as_string())
+    
+    print('Email sent\n')
 
 
 def save_prices_to_file(game_title, price_list, lowest_prices_list):
-    game_title = game_title.replace(':', ' -')
-    with open(os.path.join(FILE_DIRECTORY, f'{game_title[:-13]}.txt'), 'w') as f:
+    #game_title = game_title[:-13].replace(':', ' -')
+    with open(os.path.join(FILE_DIRECTORY, f'{game_title}.txt'), 'w') as f:
         f.write(f'{game_title}\n\n')
 
         f.write('All Time Lowest Prices\n')
-        f.write('----------------------\n')
+        f.write('--------------------------------------------\n')
         for version, price in lowest_prices_list.items():
             f.write(f'{version}:\t{price}\n')
 
         f.write('\nCurrent Prices\n')
-        f.write('--------------\n')
+        f.write('--------------------------------------------\n')
         for store, price in price_list.items():
-            f.write(f'{store}:\n\t\t\t{price}\n')
+            f.write(f'{store: <30}\t{price: >8}\n')
         f.write('\n')
+
+    with open(os.path.join(FILE_DIRECTORY, f'{game_title}.txt'), 'r') as f:
+        return f.read()
 
 
 def get_prices():
     urls = [
         'https://www.dekudeals.com/items/tales-of-vesperia-definitive-edition',
-        'https://www.dekudeals.com/items/spiritfarer',
     ]
 
     for url in urls:
@@ -55,7 +65,7 @@ def get_prices():
         result = requests.get(url)
         doc = BeautifulSoup(result.text, 'html.parser')
 
-        game_title = doc.find('title').text
+        game_title = doc.find('title').text[:-13].replace(':', ' -')
 
         all_time_low = doc.find_all('strong', text='All time low')[
             0].find_all_next('td', colspan=True)
@@ -67,8 +77,7 @@ def get_prices():
             else:
                 lowest_prices_list[f'{game_version}'] = f'{td.find_next("td", class_=True).find_next("td", class_=True).text.strip()}'
 
-        prices = doc.find_all(text='Current prices')[
-            0].find_all_next('img', alt=True)
+        prices = doc.find_all(text='Current prices')[0].find_all_next('img', alt=True)
         for img in prices:
             if img['alt'] != 'Screenshot' and img['alt'] != '' and img['alt'] is not None:
 
@@ -82,20 +91,18 @@ def get_prices():
                 for price in img.find_all_next('div', class_='btn btn-block btn-primary'):
                     price_list[f'{img["alt"].strip()} ({game_version.strip()})'] = f'{price.text.split("-", 1)[0].strip()}'
 
-        save_prices_to_file(game_title, price_list, lowest_prices_list)
-
-    # return(game_title, price_list, lowest_prices_list)
-
+        saved_file = save_prices_to_file(game_title, price_list, lowest_prices_list)
+        send_email(game_title, saved_file)
 
 def main():
-    print('Running...')
 
     get_prices()
 
     scheduler = BackgroundScheduler()
     scheduler.add_job(get_prices, 'interval', hours=12)
     scheduler.start()
-    print('Press Ctrl+{0} to exit'.format('Break' if os.name == 'nt' else 'C'))
+
+    print(f'Next price check: {(datetime.now() + timedelta(hours=12)).strftime("%m/%d/%Y at %H:%M")}')
 
     try:
         # This is here to simulate application activity (which keeps the main thread alive).
@@ -109,4 +116,8 @@ def main():
 
 
 if __name__ == '__main__':
+    print('Running...\n')
+    print('Press Ctrl+{0} to exit\n'
+          .format('Break' if os.name == 'nt' else 'C'))
+
     main()
